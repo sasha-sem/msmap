@@ -137,10 +137,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # CORS
 CORS_ORIGIN_ALLOW_ALL = False
 
-CORS_ORIGIN_WHITELIST = [
-        'http://localhost',
-       'http://localhost:3000',
-]
+CORS_ORIGIN_WHITELIST = os.environ.get("CORS_ORIGIN_WHITELIST",default='*').split(" ")
 #Static
 STATIC_URL = "/staticfiles/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
