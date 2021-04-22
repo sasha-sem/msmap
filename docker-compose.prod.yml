@@ -1,0 +1,39 @@
+version: '3.3'
+
+services:
+  web:
+    build:
+      context: ./app
+      dockerfile: Dockerfile.prod
+    command: gunicorn moscowskatemap.wsgi:application --bind 0.0.0.0:8000
+    volumes:
+      - static_volume:/home/app/web/staticfiles
+      - media_volume:/home/app/web/mediafiles
+    expose:
+      - 8000
+    env_file:
+      - ./.env.prod
+    depends_on:
+      - db
+  db:
+    image: pgrouting/pgrouting:12-3.0-3.0.0
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    ports:
+      - 4321:5432  
+    env_file:
+      - ./.env.prod.db
+  nginx:
+    build: ./nginx
+    volumes:
+      - static_volume:/home/app/web/staticfiles
+      - media_volume:/home/app/web/mediafiles
+    ports:
+      - 80:80
+      - 8787:8787
+    depends_on:
+      - web
+volumes: 
+  postgres_data:
+  static_volume:
+  media_volume:
