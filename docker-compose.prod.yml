@@ -30,6 +30,7 @@ services:
       - media_volume:/home/app/web/mediafiles
     ports:
       - 80:80
+      - 443:443
       - 8787:8787
     depends_on:
       - web
