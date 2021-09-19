@@ -5,7 +5,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('streets/', include('streets.urls')),
+    path('api/v0/streets/', include('streets.urls')),
 ]
 
 if bool(settings.DEBUG):
