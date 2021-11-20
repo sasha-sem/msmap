@@ -4,6 +4,7 @@ import django.contrib.gis.db.models.fields
 import django.core.validators
 from django.db import migrations, models
 import django.db.models.deletion
+from django.contrib.postgres.operations import CreateExtension
 
 
 class Migration(migrations.Migration):
@@ -14,6 +15,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        CreateExtension("pgrouting"),
         migrations.CreateModel(
             name='StreetType',
             fields=[

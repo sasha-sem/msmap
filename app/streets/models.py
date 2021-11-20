@@ -40,6 +40,8 @@ class Street(models.Model):
                                        verbose_name='Тип покрытия',
                                        related_name='street_surface')
     user_score = models.IntegerField(verbose_name='Польовательский рейтинг', blank=True, null=True, default=0)
+    source = models.IntegerField(blank=True, null=True, )
+    target = models.IntegerField(blank=True, null=True, )
     geom = geomodels.MultiLineStringField(blank=False, null=True, verbose_name='Геометрия')
 
     def __str__(self):
