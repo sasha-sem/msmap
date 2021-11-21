@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+    <title>Moscow Skate Map</title>
+
+    <link rel="stylesheet" href="https://openlayers.org/en/v6.1.1/css/ol.css" type="text/css">
+    <script src="https://openlayers.org/en/v6.1.1/build/ol.js"></script>
+
+    <style>
+        body {
+            padding: 0;
+            margin: 0;
+        }
+
+        html, body, #map {
+            height: 100%;
+            width: 100%;
+            font-family: sans-serif;
+        }
+
+        #meta {
+            background-color: rgba(255, 255, 255, 0.75);
+            color: black;
+            z-index: 2;
+            position: absolute;
+            top: 10px;
+            left: 40px;
+            padding: 10px 10px;
+            margin: 0;
+            width: 25vw;
+        }
+
+        .ol-popup {
+            position: absolute;
+            background-color: white;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #cccccc;
+            bottom: 12px;
+            left: -50px;
+            min-width: 280px;
+        }
+
+        .ol-popup:after, .ol-popup:before {
+            top: 100%;
+            border: solid transparent;
+            content: " ";
+            height: 0;
+            width: 0;
+            position: absolute;
+            pointer-events: none;
+        }
+
+        .ol-popup:after {
+            border-top-color: white;
+            border-width: 10px;
+            left: 48px;
+            margin-left: -10px;
+        }
+
+        .ol-popup:before {
+            border-top-color: #cccccc;
+            border-width: 11px;
+            left: 48px;
+            margin-left: -11px;
+        }
+
+        .ol-popup-closer {
+            text-decoration: none;
+            position: absolute;
+            top: 2px;
+            right: 8px;
+        }
+
+        .ol-popup-closer:after {
+            content: "✖";
+        }
+    </style>
+</head>
+
+<body>
+
+<div id="meta">
+    <p>Кликните на дорожку, чтобы получить дополнительную информацию о ней.</p>
+    <label class="switch" id="route-switch">
+        <input type="checkbox" id="routing-toggle">
+    </label>
+    <label for="route-switch" class="text">Построение маршрутов</label>
+    <p>В режиме построения маршрутов. Кликнете один раз, чтобы установить точку старта, и второй раз, чтобы установить точку конца и построить маршрут.</p>
+    <p>Маршруты строится от узла к узлу, маршрут до ближайшего узла не строится.</p>
+</div>
+
+<div id="map"></div>
+<div id="popup" class="ol-popup">
+    <a href="#" id="popup-closer" class="ol-popup-closer"></a>
+    <div id="popup-content"></div>
+</div>
+<script>
+
+    //Constants
+    const serverName = "http://localhost:8787"
+    const container = document.getElementById('popup');
+    const content = document.getElementById('popup-content');
+    const closer = document.getElementById('popup-closer');
+    const routing_toggle = document.getElementById('routing-toggle')
+
+    // Global variables
+    let route_view = false
+
+    // Overlay for pop up
+    const overlay = new ol.Overlay({
+        element: container,
+        autoPan: true,
+        autoPanAnimation: {
+            duration: 250,
+        },
+    });
+
+    // Popup close event handler
+    closer.onclick = function () {
+        overlay.setPosition(undefined);
+        closer.blur();
+        return false;
+    };
+
+    // Base map
+    let baseLayer = new ol.layer.Tile({
+        source: new ol.source.OSM()
+    });
+
+
+    // Streets Layer
+    let vectorUrl = serverName + "/v0/streets/?format=json";
+
+    const styleFunction = function (feature) {
+        const raiting = feature.get('street_surface_rating');
+        let stroke_color
+        if (raiting === 1) {
+            stroke_color = "#d7191c"
+        } else if (raiting === 2) {
+            stroke_color = "#e85b3a"
+        } else if (raiting === 3) {
+            stroke_color = "#f99e59"
+        } else if (raiting === 4) {
+            stroke_color = "#fec981";
+        } else if (raiting === 5) {
+            stroke_color = "#ffedab";
+        } else if (raiting === 6) {
+            stroke_color = "#ecf7ad";
+        } else if (raiting === 7) {
+            stroke_color = "#c4e687";
+        } else if (raiting === 8) {
+            stroke_color = "#97d265";
+        } else if (raiting === 9) {
+            stroke_color = "#58b453";
+        } else if (raiting === 10) {
+            stroke_color = "#1a9641";
+        } else {
+            stroke_color = "#00000055"
+        }
+        if (route_view) {
+            stroke_color = "#00000055"
+        }
+        return new ol.style.Style({
+            stroke: new ol.style.Stroke({
+                width: 5,
+                color: stroke_color
+            }),
+        })
+    };
+
+
+    let vectorSource = new ol.source.Vector({
+        format: new ol.format.GeoJSON(),
+        url: vectorUrl
+    });
+
+    let vectorLayer = new ol.layer.Vector({
+        source: vectorSource,
+        style: styleFunction
+    });
+
+    // Click layer set up, layer for points
+    let clicks = [];
+    let clickSource = new ol.source.Vector({});
+
+    let clickLayer = new ol.layer.Vector({
+        source: clickSource,
+        style: new ol.style.Style({
+            image: new ol.style.RegularShape({
+                fill: new ol.style.Fill({
+                    color: 'red'
+                }),
+                stroke: new ol.style.Stroke({
+                    width: 1,
+                    color: 'grey'
+                }),
+                points: 16,
+                radius: 10,
+                angle: Math.PI / 4
+            })
+        })
+    });
+
+
+    // Route layer set up
+    function routeUrl(coord1, coord2) {
+        let url = serverName + "/v0/routing/streets/?format=json";
+        url += "&from_lon=" + coord1[0];
+        url += "&from_lat=" + coord1[1];
+        url += "&to_lon=" + coord2[0];
+        url += "&to_lat=" + coord2[1];
+        return url;
+    }
+
+    let routeSource = new ol.source.Vector({
+        format: new ol.format.GeoJSON(),
+        projection: 'EPSG:4326',
+        features: []
+    });
+
+    const routeStyleFunction = function (feature) {
+        const raiting = feature.get('street_surface_rating');
+        let stroke_color
+        if (raiting === 1) {
+            stroke_color = "#d7191c"
+        } else if (raiting === 2) {
+            stroke_color = "#e85b3a"
+        } else if (raiting === 3) {
+            stroke_color = "#f99e59"
+        } else if (raiting === 4) {
+            stroke_color = "#fec981";
+        } else if (raiting === 5) {
+            stroke_color = "#ffedab";
+        } else if (raiting === 6) {
+            stroke_color = "#ecf7ad";
+        } else if (raiting === 7) {
+            stroke_color = "#c4e687";
+        } else if (raiting === 8) {
+            stroke_color = "#97d265";
+        } else if (raiting === 9) {
+            stroke_color = "#58b453";
+        } else if (raiting === 10) {
+            stroke_color = "#1a9641";
+        } else {
+            stroke_color = "#00000055"
+        }
+        return new ol.style.Style({
+            stroke: new ol.style.Stroke({
+                width: 7,
+                color: stroke_color
+            }),
+        })
+    };
+
+    let routeLayer = new ol.layer.Vector({
+        title: 'Route',
+        source: routeSource,
+        style: routeStyleFunction
+    });
+
+    // Map set up
+    function parseStreetType(street_type){
+      switch (street_type) {
+        case "footway":
+          return "Пешеходная"
+        case "service":
+          return "Служебная"
+        case "residential":
+            return "Жилая"
+        case "crosswalk":
+            return "Пешеходный переход"
+        default:
+          return "Неизвестно"
+      }
+    }
+    function formatRaiting(raiting){
+        if (raiting === 1){
+            return raiting + ' балл'
+        } else if (raiting > 1 && raiting <=4) {
+            return raiting + ' балла'
+        } else {
+            return raiting + ' баллов'
+        }
+    }
+    let map = new ol.Map({
+        target: 'map',
+        overlays: [overlay],
+        view: new ol.View({
+            center: ol.proj.transform([37.5422, 55.7412], 'EPSG:4326', 'EPSG:3857'),
+            zoom: 17
+        }),
+        layers: [baseLayer, vectorLayer, routeLayer, clickLayer]
+    });
+
+    // Change layers on
+    routing_toggle.onclick = function () {
+        if (routing_toggle.checked) {
+            overlay.setPosition(undefined);
+            closer.blur();
+        } else {
+            clicks.length = 0
+            route_view = false
+            vectorLayer.getSource().changed();
+            clickSource.clear();
+            routeSource.clear();
+        }
+        map.render();
+    };
+
+    map.on('singleclick', function (evt) {
+        if (routing_toggle.checked) {
+            if (clicks.length >= 2) {
+                clicks.length = 0
+                route_view = false
+                vectorLayer.getSource().changed();
+                clickSource.clear();
+                routeSource.clear();
+            }
+            if (clicks.length <= 1) {
+                clicks.push(ol.proj.transform(evt.coordinate, 'EPSG:3857', 'EPSG:4326'));
+                clickSource.addFeature(new ol.Feature({
+                    geometry: new ol.geom.Point(evt.coordinate),
+                }));
+            }
+
+            if (clicks.length === 2) {
+                let url = routeUrl(clicks[0], clicks[1]);
+                route_view = true
+                vectorLayer.getSource().changed();
+                routeSource.setUrl(url);
+                routeSource.clear();
+                routeSource.refresh();
+
+            }
+        } else {
+            clicks.length = 0
+            route_view = false
+            vectorLayer.getSource().changed()
+            clickSource.clear();
+            routeSource.clear();
+
+            let f = map.forEachFeatureAtPixel(
+                evt.pixel,
+                function (ft, layer) {
+                    return ft;
+                }
+            );
+            if (f) {
+                const coordinate = evt.coordinate;
+
+
+                const street_type = f.get('street_type');
+                const surface_type = f.get('surface_type');
+                const raiting = f.get('street_surface_rating');
+                //const feature = vectorSource.getFeaturesAtCoordinate(coordinate)
+               // console.log(feature)
+                content.innerHTML = '<p>Тип улицы: '+ parseStreetType(street_type.name) + '</p>' + '<p>Тип покрытия: '+ surface_type.name + '</p>' + '<p>Рейтинг покрытия: '+ formatRaiting(raiting) + '</p>';
+                overlay.setPosition(coordinate);
+            }
+
+        }
+        map.render();
+    });
+    map.on('pointermove', function (e) {
+        if (!routing_toggle.checked) {
+            let pixel = map.getEventPixel(e.originalEvent);
+            let hit = map.hasFeatureAtPixel(pixel);
+            let mapTarget = document.getElementById('map')
+            mapTarget.style.cursor = hit ? 'pointer' : '';
+        }
+    });
+
+</script>
+</body>
+</html>
