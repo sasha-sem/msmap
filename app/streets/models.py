@@ -42,6 +42,10 @@ class Street(models.Model):
     user_score = models.IntegerField(verbose_name='Польовательский рейтинг', blank=True, null=True, default=0)
     source = models.IntegerField(blank=True, null=True, )
     target = models.IntegerField(blank=True, null=True, )
+    x1 = models.FloatField(blank=True, null=True, )
+    y1 = models.FloatField(blank=True, null=True, )
+    x2 = models.FloatField(blank=True, null=True, )
+    y2 = models.FloatField(blank=True, null=True, )
     geom = geomodels.MultiLineStringField(blank=False, null=True, verbose_name='Геометрия')
 
     def __str__(self):

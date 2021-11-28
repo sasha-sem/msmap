@@ -7,6 +7,7 @@
     <title>Moscow Skate Map</title>
 
     <link rel="stylesheet" href="https://openlayers.org/en/v6.1.1/css/ol.css" type="text/css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"/>
     <script src="https://openlayers.org/en/v6.1.1/build/ol.js"></script>
 
     <style>
@@ -31,6 +32,18 @@
             padding: 10px 10px;
             margin: 0;
             width: 25vw;
+        }
+
+        #metaStat {
+            background-color: rgba(255, 255, 255, 0.75);
+            color: black;
+            z-index: 2;
+            position: absolute;
+            top: 65vh;
+            left: 30vw;
+            padding: 10px 10px;
+            margin: 0;
+            width: 40vw;
         }
 
         .ol-popup {
@@ -85,13 +98,11 @@
 <body>
 
 <div id="meta">
-    <p>Кликните на дорожку, чтобы получить дополнительную информацию о ней.</p>
     <label class="switch" id="route-switch">
-        <input type="checkbox" id="routing-toggle">
+        <input type="checkbox" id="routing-toggle" onclick="RoutingClick()">
     </label>
-    <label for="route-switch" class="text">Построение маршрутов</label>
-    <p>В режиме построения маршрутов. Кликнете один раз, чтобы установить точку старта, и второй раз, чтобы установить точку конца и построить маршрут.</p>
-    <p>Маршруты строится от узла к узлу, маршрут до ближайшего узла не строится.</p>
+    <label for="route-switch" class="text"> Режим построения маршрутов</label>
+    <p>Кликните на дорожку, чтобы получить дополнительную информацию о ней.</p>
 </div>
 
 <div id="map"></div>
@@ -106,10 +117,10 @@
     const container = document.getElementById('popup');
     const content = document.getElementById('popup-content');
     const closer = document.getElementById('popup-closer');
-    const routing_toggle = document.getElementById('routing-toggle')
 
     // Global variables
     let route_view = false
+    let selected_alg = 'dijkstra/streets/'
 
     // Overlay for pop up
     const overlay = new ol.Overlay({
@@ -208,8 +219,8 @@
 
 
     // Route layer set up
-    function routeUrl(coord1, coord2) {
-        let url = serverName + "/v0/routing/streets/?format=json";
+    function routeUrl(uri, coord1, coord2) {
+        let url = serverName + "/v0/routing/" + uri + "?format=json";
         url += "&from_lon=" + coord1[0];
         url += "&from_lat=" + coord1[1];
         url += "&to_lon=" + coord2[0];
@@ -264,29 +275,59 @@
     });
 
     // Map set up
-    function parseStreetType(street_type){
-      switch (street_type) {
-        case "footway":
-          return "Пешеходная"
-        case "service":
-          return "Служебная"
-        case "residential":
-            return "Жилая"
-        case "crosswalk":
-            return "Пешеходный переход"
-        default:
-          return "Неизвестно"
-      }
-    }
-    function formatRaiting(raiting){
-        if (raiting === 1){
-            return raiting + ' балл'
-        } else if (raiting > 1 && raiting <=4) {
-            return raiting + ' балла'
-        } else {
-            return raiting + ' баллов'
+    function parseStreetType(street_type) {
+        switch (street_type) {
+            case "footway":
+                return "Пешеходная"
+            case "service":
+                return "Служебная"
+            case "residential":
+                return "Жилая"
+            case "crosswalk":
+                return "Пешеходный переход"
+            default:
+                return "Неизвестно"
         }
     }
+
+    function colorFromRating(rating) {
+        let color
+        if (rating === 1) {
+            color = "#d7191c"
+        } else if (rating === 2) {
+            color = "#e85b3a"
+        } else if (rating === 3) {
+            color = "#f99e59"
+        } else if (rating === 4) {
+            color = "#fec981";
+        } else if (rating === 5) {
+            color = "#ffedab";
+        } else if (rating === 6) {
+            color = "#ecf7ad";
+        } else if (rating === 7) {
+            color = "#c4e687";
+        } else if (rating === 8) {
+            color = "#97d265";
+        } else if (rating === 9) {
+            color = "#58b453";
+        } else if (rating === 10) {
+            color = "#1a9641";
+        } else {
+            color = "#00000055"
+        }
+        return color
+    }
+
+    function formatRaiting(rating) {
+        if (rating === 1) {
+            return rating + ' балл'
+        } else if (rating > 1 && rating <= 4) {
+            return rating + ' балла'
+        } else {
+            return rating + ' баллов'
+        }
+    }
+
     let map = new ol.Map({
         target: 'map',
         overlays: [overlay],
@@ -298,21 +339,66 @@
     });
 
     // Change layers on
-    routing_toggle.onclick = function () {
+    function RoutingClick() {
+        let routing_toggle = document.getElementById('routing-toggle')
         if (routing_toggle.checked) {
             overlay.setPosition(undefined);
             closer.blur();
+            let meta = document.getElementById('meta')
+            meta.innerHTML = `
+                <label class="switch" id="route-switch">
+                    <input type="checkbox" id="routing-toggle" onclick="RoutingClick()">
+                </label>
+                <label for="route-switch" class="text"> Режим построения маршрутов</label>
+                <form name="AddAndEdit">
+                    <select id="selection" onchange="changeSelection()">
+                      <option value="dijkstra/streets/" selected="selected">Алгоритм Дейкстры</option>
+                      <option value="astar/streets/">Алгоритм A*</option>
+                    </select>
+                </form>
+                <p>В режиме построения маршрутов. Кликнете один раз, чтобы установить точку старта, и второй раз, чтобы установить
+                    точку конца и построить маршрут.</p>
+                <p>Маршруты строится от узла к узлу, маршрут до ближайшего узла не строится.</p>`
+            document.getElementById("routing-toggle").checked = true;
+
         } else {
             clicks.length = 0
             route_view = false
             vectorLayer.getSource().changed();
             clickSource.clear();
             routeSource.clear();
+            let body = document.body;
+            let oldStat = document.getElementById('metaStat')
+            if (oldStat) {
+                body.removeChild(oldStat)
+            }
+            let meta = document.getElementById('meta')
+            meta.innerHTML = `
+                <label class="switch" id="route-switch">
+                    <input type="checkbox" id="routing-toggle" onclick="RoutingClick()">
+                </label>
+                <label for="route-switch" class="text"> Режим построения маршрутов</label>
+                <p>Кликните на дорожку, чтобы получить дополнительную информацию о ней.</p>`
+            document.getElementById("routing-toggle").checked = false;
+
         }
         map.render();
-    };
+    }
+    function changeSelection(){
+        let selection = document.getElementById("selection");
+        selected_alg = selection.value
+        if (clicks.length === 2) {
+            let route_url = routeUrl(selected_alg, clicks[0], clicks[1]);
+            route_view = true
+            vectorLayer.getSource().changed();
+            routeSource.setUrl(route_url);
+            routeSource.clear();
+            routeSource.refresh();
+        }
+    }
 
     map.on('singleclick', function (evt) {
+        const routing_toggle = document.getElementById('routing-toggle')
         if (routing_toggle.checked) {
             if (clicks.length >= 2) {
                 clicks.length = 0
@@ -329,13 +415,52 @@
             }
 
             if (clicks.length === 2) {
-                let url = routeUrl(clicks[0], clicks[1]);
+                let route_url = routeUrl(selected_alg, clicks[0], clicks[1]);
                 route_view = true
                 vectorLayer.getSource().changed();
-                routeSource.setUrl(url);
+                routeSource.setUrl(route_url);
                 routeSource.clear();
                 routeSource.refresh();
+                let stat_url = routeUrl("stat/streets/", clicks[0], clicks[1]);
+                fetch(stat_url)
+                    .then((response) => {
+                        return response.json();
+                    })
+                    .then((data) => {
+                        let body = document.body;
+                        let oldStat = document.getElementById('metaStat')
+                        if (oldStat) {
+                            body.removeChild(oldStat)
+                        }
+                        let dijkstraprogress = ``
+                        data.dijkstra.path.forEach(element => {
+                            let percent = Math.round(((element.length / 1000) / data.dijkstra.route_length) * 100)
+                            let color = colorFromRating(element.rating)
+                            dijkstraprogress = dijkstraprogress + `<div class="progress-bar" style="width: ${percent}%; background-color: ${color}"> </div>`
+                        });
+                        let astarprogress = ``
+                        data.astar.path.forEach(element => {
+                            let percent = Math.round(((element.length / 1000) / data.dijkstra.route_length) * 100)
+                            let color = colorFromRating(element.rating)
+                            astarprogress = astarprogress + `<div class="progress-bar" style="width: ${percent}%; background-color: ${color}"> </div>`
+                        });
+                        let metaStat = document.createElement('div');
+                        metaStat.innerHTML = `<h2> Алгоритм Дейкстры </h2>
+                                                <div class="progress" style="max-width: 100%">
+                                                    ${dijkstraprogress}
+                                                </div>
+                                                <p> Длина маршрута: ${data.dijkstra.route_length.toString()} км. Время маршрута: ${data.dijkstra.route_time.toString()} мин.  Средняя скорость: ${data.dijkstra.average_speed.toString()} км/ч. </p>
+                                                <p> Время обработки запроса: ${data.dijkstra.time} с.</p>
 
+                                             <h2> Алгоритм A* </h2>
+                                                 <div class="progress" style="max-width: 100%">
+                                                    ${astarprogress}
+                                                </div>
+                                                <p> Длина маршрута: ${data.astar.route_length.toString()} км. Время маршрута: ${data.astar.route_time.toString()} мин.  Средняя скорость: ${data.astar.average_speed.toString()} км/ч. </p>
+                                                <p> Время обработки запроса: ${data.astar.time} с.</p>`
+                        metaStat.setAttribute('id', 'metaStat');
+                        body.appendChild(metaStat);
+                    });
             }
         } else {
             clicks.length = 0
@@ -358,8 +483,8 @@
                 const surface_type = f.get('surface_type');
                 const raiting = f.get('street_surface_rating');
                 //const feature = vectorSource.getFeaturesAtCoordinate(coordinate)
-               // console.log(feature)
-                content.innerHTML = '<p>Тип улицы: '+ parseStreetType(street_type.name) + '</p>' + '<p>Тип покрытия: '+ surface_type.name + '</p>' + '<p>Рейтинг покрытия: '+ formatRaiting(raiting) + '</p>';
+                // console.log(feature)
+                content.innerHTML = '<p>Тип улицы: ' + parseStreetType(street_type.name) + '</p>' + '<p>Тип покрытия: ' + surface_type.name + '</p>' + '<p>Рейтинг покрытия: ' + formatRaiting(raiting) + '</p>';
                 overlay.setPosition(coordinate);
             }
 
@@ -367,6 +492,7 @@
         map.render();
     });
     map.on('pointermove', function (e) {
+        const routing_toggle = document.getElementById('routing-toggle')
         if (!routing_toggle.checked) {
             let pixel = map.getEventPixel(e.originalEvent);
             let hit = map.hasFeatureAtPixel(pixel);
